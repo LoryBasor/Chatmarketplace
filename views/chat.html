@@ -1,0 +1,115 @@
+<!-- views/chat.html - Interface de chat -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+      content="script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'">
+
+  <title>InstantChat - Messagerie</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="chat-page">
+  <div class="chat-container">
+    <!-- Sidebar gauche - Liste des conversations -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="user-profile">
+          <img id="currentUserAvatar" src="/images/default-avatar.png" alt="Avatar">
+          <div>
+            <h3 id="currentUserName">Chargement...</h3>
+            <p id="currentUserStatus">En ligne</p>
+          </div>
+        </div>
+        <button id="logoutBtn" class="btn-icon" title="Déconnexion">
+          <span>🚪</span>
+        </button>
+      </div>
+
+      <div class="search-container">
+        <input type="text" id="userSearch" placeholder="🔍 Rechercher un utilisateur...">
+        <div id="searchResults" class="search-results"></div>
+      </div>
+
+      <div class="conversations-list" id="conversationsList">
+        <p class="empty-state">Aucune conversation</p>
+      </div>
+    </aside>
+
+    <!-- Zone de chat principale -->
+    <main class="chat-main">
+      <div class="empty-chat" id="emptyChat">
+        <div class="empty-chat-content">
+          <h2>💬 Bienvenue sur InstantChat</h2>
+          <p>Sélectionnez une conversation ou recherchez un utilisateur pour commencer</p>
+        </div>
+      </div>
+
+      <div class="chat-active" id="chatActive" style="display: none;">
+        <!-- En-tête du chat -->
+        <div class="chat-header">
+          <div class="chat-user-info">
+            <img id="chatUserAvatar" src="/images/default-avatar.png" alt="Avatar">
+            <div>
+              <h3 id="chatUserName">Utilisateur</h3>
+              <p id="chatUserStatus" class="status-text">Hors ligne</p>
+              <p id="typingIndicator" class="typing-indicator" style="display: none;">
+                En train d'écrire...
+              </p>
+            </div>
+          </div>
+          <div class="chat-actions">
+            <button class="btn-icon" title="Rechercher">🔍</button>
+            <button class="btn-icon" title="Plus">⋮</button>
+          </div>
+        </div>
+
+        <!-- Messages -->
+        <div class="messages-container" id="messagesContainer">
+          <div class="messages-loading">Chargement des messages...</div>
+        </div>
+
+        <!-- Zone de saisie -->
+        <div class="chat-input-container">
+          <div id="replyPreview" class="reply-preview" style="display: none;">
+            <div class="reply-content">
+              <p class="reply-to">Répondre à <strong></strong></p>
+              <p class="reply-message"></p>
+            </div>
+            <button class="btn-icon" id="cancelReply">✕</button>
+          </div>
+
+          <div class="chat-input">
+            <button class="btn-icon" id="emojiBtn" title="Emoji">😊</button>
+            <input type="file" id="fileInput" accept="image/*,video/*,audio/*,.pdf,.doc,.docx" hidden>
+            <button class="btn-icon" id="attachBtn" title="Joindre un fichier">📎</button>
+            
+            <input type="text" id="messageInput" placeholder="Écrivez un message..." autocomplete="off">
+            
+            <button class="btn-icon" id="audioBtn" title="Message vocal">🎤</button>
+            <button class="btn-send" id="sendBtn">
+              <span>➤</span>
+            </button>
+          </div>
+
+          <div id="filePreview" class="file-preview" style="display: none;"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal pour l'aperçu des médias -->
+  <div id="mediaModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span class="modal-close">&times;</span>
+      <div id="mediaModalContent"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/socket.js"></script>
+  <script src="/js/notifications.js"></script>
+</body>
+</html>

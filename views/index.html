@@ -1,0 +1,79 @@
+<!-- views/index.html - Page de connexion/inscription -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InstantChat - Connexion</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="http://192.168.75.145:3000//css/style.css">
+</head>
+<body class="auth-page">
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-header">
+        <h1>💬 InstantChat</h1>
+        <p>Messagerie instantanée moderne et sécurisée</p>
+      </div>
+
+      <!-- Formulaire de connexion -->
+      <form id="loginForm" class="auth-form active">
+        <h2>Connexion</h2>
+        
+        <div class="form-group">
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" required placeholder="votre@email.com">
+        </div>
+
+        <div class="form-group">
+          <label for="loginPassword">Mot de passe</label>
+          <input type="password" id="loginPassword" required placeholder="••••••••">
+        </div>
+
+        <button type="submit" class="btn btn-primary">Se connecter</button>
+
+        <p class="auth-switch">
+          Pas encore de compte ? 
+          <a href="#" id="showRegister">S'inscrire</a>
+        </p>
+      </form>
+
+      <!-- Formulaire d'inscription -->
+      <form id="registerForm" class="auth-form">
+        <h2>Inscription</h2>
+        
+        <div class="form-group">
+          <label for="registerName">Nom complet</label>
+          <input type="text" id="registerName" required placeholder="John Doe">
+        </div>
+
+        <div class="form-group">
+          <label for="registerEmail">Email</label>
+          <input type="email" id="registerEmail" required placeholder="votre@email.com">
+        </div>
+
+        <div class="form-group">
+          <label for="registerPassword">Mot de passe</label>
+          <input type="password" id="registerPassword" required placeholder="••••••••">
+        </div>
+
+        <div class="form-group">
+          <label for="registerPasswordConfirm">Confirmer le mot de passe</label>
+          <input type="password" id="registerPasswordConfirm" required placeholder="••••••••">
+        </div>
+
+        <button type="submit" class="btn btn-primary">S'inscrire</button>
+
+        <p class="auth-switch">
+          Déjà un compte ? 
+          <a href="#" id="showLogin">Se connecter</a>
+        </p>
+      </form>
+
+      <div id="authError" class="error-message"></div>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+</body>
+</html>
