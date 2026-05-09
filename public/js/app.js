@@ -168,7 +168,14 @@ function displayConversations() {
     return;
   }
 
-  container.innerHTML = conversations.map(conv => {
+  // Trier par dernier message (le plus récent en haut)
+  const sortedConversations = [...conversations].sort((a, b) => {
+    const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+    const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+    return timeB - timeA;
+  });
+
+  container.innerHTML = sortedConversations.map(conv => {
     const otherUser = conv.participants
       ? conv.participants.find(p => String(p.id) !== String(currentUser.id))
       : null;

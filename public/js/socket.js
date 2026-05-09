@@ -61,6 +61,14 @@ function initSocket() {
     }
     displayMessages();
     scrollToBottom();
+
+    // Actualiser instantanément la liste des conversations (WhatsApp-style)
+    const conv = conversations.find(c => sameId(c.id, message.conversation || message.conversationId));
+    if (conv) {
+      conv.lastMessage = message;
+      conv.lastMessageAt = message.createdAt;
+      displayConversations();
+    }
   });
 
   // Message livré
@@ -75,26 +83,50 @@ function initSocket() {
 
   // Message lu (un seul)
   socket.on('message:read', ({ messageId, userId, readAt }) => {
+    let statusUpdated = false;
     const msg = messages.find(m => sameId(m.id, messageId));
     if (msg) {
       msg.status = msg.status || {};
       msg.status.read = true;
       updateMessageStatus(msg.id);
+      statusUpdated = true;
+    }
+
+    // Répercuter sur la barre latérale si c'est le dernier message
+    if (statusUpdated) {
+      const conv = conversations.find(c => c.lastMessage && sameId(c.lastMessage.id, messageId));
+      if (conv) {
+        conv.lastMessage.status = conv.lastMessage.status || {};
+        conv.lastMessage.status.read = true;
+        displayConversations();
+      }
     }
   });
 
   // Tous les messages d'une conversation lus
   socket.on('messages:read', ({ conversationId, userId, readAt }) => {
-    if (!currentConversation || !sameId(currentConversation.id, conversationId)) return;
-    // Marquer tous les messages envoyés par moi comme lus
-    messages.forEach(msg => {
-      const senderId = msg.sender ? msg.sender.id : msg.senderId;
+    // Si c'est la conversation active
+    if (currentConversation && sameId(currentConversation.id, conversationId)) {
+      messages.forEach(msg => {
+        const senderId = msg.sender ? msg.sender.id : msg.senderId;
+        if (sameId(senderId, currentUser.id)) {
+          msg.status = msg.status || {};
+          msg.status.read = true;
+        }
+      });
+      displayMessages();
+    }
+    
+    // Mettre à jour la barre latérale instantanément
+    const conv = conversations.find(c => sameId(c.id, conversationId));
+    if (conv && conv.lastMessage) {
+      const senderId = conv.lastMessage.sender ? conv.lastMessage.sender.id : conv.lastMessage.senderId;
       if (sameId(senderId, currentUser.id)) {
-        msg.status = msg.status || {};
-        msg.status.read = true;
+        conv.lastMessage.status = conv.lastMessage.status || {};
+        conv.lastMessage.status.read = true;
+        displayConversations();
       }
-    });
-    displayMessages();
+    }
   });
 
   // Message édité
@@ -189,7 +221,7 @@ function handleNewMessage(message) {
     if (document.hasFocus()) {
       socket.emit('message:read', {
         messageId: message.id,
-        conversationId: message.conversation
+        conversationId: message.conversation || message.conversationId
       });
     }
 
@@ -197,7 +229,7 @@ function handleNewMessage(message) {
     socket.emit('message:delivered', { messageId: message.id });
 
   } else {
-    // Notification pour les autres conversations
+    // Notification in-app ou systeme (seulement si pas dans la conv)
     const senderName  = message.sender ? message.sender.name : 'Quelqu\'un';
     const senderAvatar = message.sender ? message.sender.avatar : null;
     const preview     = message.type === 'text'
@@ -208,29 +240,31 @@ function handleNewMessage(message) {
       window.notificationManager.showMessage(
         senderName,
         preview,
-        message.conversation,
+        message.conversation || message.conversationId,
         senderAvatar
       );
     }
+  }
 
-    // Mettre à jour la badge dans la liste
-    const conv = conversations.find(c => sameId(c.id, message.conversation));
-    if (conv) {
+  // Mettre à jour la barre latérale pour tout le monde (WhatsApp-style)
+  const conv = conversations.find(c => sameId(c.id, message.conversation || message.conversationId));
+  if (conv) {
+    if (!isCurrentConv) {
       if (typeof conv.unreadCount === 'object') {
         conv.unreadCount[currentUser.id] = (conv.unreadCount[currentUser.id] || 0) + 1;
       } else {
         conv.unreadCount = (conv.unreadCount || 0) + 1;
       }
-      conv.lastMessage    = message;
-      conv.lastMessageAt  = message.createdAt;
-    } else {
-      // Nouvelle conversation — recharger
-      loadConversations();
-      return;
     }
-
-    displayConversations();
+    conv.lastMessage    = message;
+    conv.lastMessageAt  = message.createdAt;
+  } else {
+    // Nouvelle conversation — recharger completement
+    loadConversations();
+    return;
   }
+
+  displayConversations(); // Gère le tri et l'affichage instantané
 }
 
 // Mettre à jour le statut d'un message dans le DOM sans re-rendre tout
