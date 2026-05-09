@@ -159,6 +159,9 @@ async function loadConversations() {
 
 function displayConversations() {
   const container = document.getElementById('conversationsList');
+  
+  // Sauvegarder la position de défilement pour ne pas perturber l'utilisateur
+  const scrollTop = container.scrollTop;
 
   if (!conversations || conversations.length === 0) {
     container.innerHTML = '<p class="empty-state">Aucune conversation</p>';
@@ -195,6 +198,9 @@ function displayConversations() {
       </div>
     `;
   }).join('');
+  
+  // Restaurer la position de défilement
+  container.scrollTop = scrollTop;
 }
 
 async function startConversation(userId) {
@@ -276,6 +282,51 @@ async function loadMessages(conversationId) {
   } catch (error) {
     console.error('loadMessages:', error);
     container.innerHTML = '<div class="messages-loading">Erreur de chargement</div>';
+  }
+}
+
+// ─────────────────────────────────────────
+// SYNCHRONISATION SILENCIEUSE
+// ─────────────────────────────────────────
+async function silentSync() {
+  if (!localStorage.getItem('token')) return;
+
+  try {
+    // 1. Sync des conversations
+    const convRes = await fetch(`${API_URL}/conversations`, { headers: getHeaders() });
+    if (convRes.ok) {
+      const data = await convRes.json();
+      // Mettre à jour seulement si nécessaire ou laisser displayConversations gérer (avec le scroll préservé)
+      conversations = data.conversations || [];
+      displayConversations();
+    }
+
+    // 2. Sync des messages si une conversation est active
+    if (currentConversation) {
+      const msgRes = await fetch(`${API_URL}/messages/conversation/${currentConversation.id}`, { headers: getHeaders() });
+      if (msgRes.ok) {
+        const data = await msgRes.json();
+        const newMessages = data.messages || [];
+        
+        // Vérifier s'il y a eu des changements (nombre de messages ou dernier ID)
+        const hasChanges = messages.length !== newMessages.length || 
+          (messages.length > 0 && newMessages.length > 0 && 
+           messages[messages.length - 1].id !== newMessages[newMessages.length - 1].id);
+
+        if (hasChanges) {
+          const container = document.getElementById('messagesContainer');
+          // Vérifier si l'utilisateur est déjà tout en bas
+          const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
+          
+          messages = newMessages;
+          displayMessages();
+          
+          if (isAtBottom) scrollToBottom();
+        }
+      }
+    }
+  } catch (err) {
+    // Échec silencieux
   }
 }
 
