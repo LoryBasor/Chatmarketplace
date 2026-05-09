@@ -1,106 +1,115 @@
-<!-- views/chat.html - Interface de chat -->
+<!-- views/chat.html -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-      content="script-src 'self' 'unsafe-inline'; script-src-attr 'unsafe-inline'">
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>InstantChat - Messagerie</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="chat-page">
-  <div class="chat-container">
-    <!-- Sidebar gauche - Liste des conversations -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="user-profile">
-          <img id="currentUserAvatar" src="/images/default-avatar.png" alt="Avatar">
-          <div>
-            <h3 id="currentUserName">Chargement...</h3>
-            <p id="currentUserStatus">En ligne</p>
-          </div>
-        </div>
-        <button id="logoutBtn" class="btn-icon" title="Déconnexion">
-          <span>🚪</span>
-        </button>
-      </div>
 
-      <div class="search-container">
-        <input type="text" id="userSearch" placeholder="🔍 Rechercher un utilisateur...">
-        <div id="searchResults" class="search-results"></div>
-      </div>
+  <div id="notificationContainer" class="notification-container"></div>
 
-      <div class="conversations-list" id="conversationsList">
-        <p class="empty-state">Aucune conversation</p>
-      </div>
-    </aside>
+  <!-- Wrapper avec overflow:hidden pour le sliding -->
+  <div class="chat-wrapper">
+    <div class="chat-container" id="chatContainer">
 
-    <!-- Zone de chat principale -->
-    <main class="chat-main">
-      <div class="empty-chat" id="emptyChat">
-        <div class="empty-chat-content">
-          <h2>💬 Bienvenue sur InstantChat</h2>
-          <p>Sélectionnez une conversation ou recherchez un utilisateur pour commencer</p>
-        </div>
-      </div>
-
-      <div class="chat-active" id="chatActive" style="display: none;">
-        <!-- En-tête du chat -->
-        <div class="chat-header">
-          <div class="chat-user-info">
-            <img id="chatUserAvatar" src="/images/default-avatar.png" alt="Avatar">
+      <!-- ══ PANNEAU 1 : SIDEBAR ══════════════════════ -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="user-profile">
+            <img id="currentUserAvatar" src="/images/default-avatar.png" alt="Avatar">
             <div>
-              <h3 id="chatUserName">Utilisateur</h3>
-              <p id="chatUserStatus" class="status-text">Hors ligne</p>
-              <p id="typingIndicator" class="typing-indicator" style="display: none;">
-                En train d'écrire...
-              </p>
+              <h3 id="currentUserName">Chargement...</h3>
+              <p id="currentUserStatus">En ligne</p>
             </div>
           </div>
-          <div class="chat-actions">
-            <button class="btn-icon" title="Rechercher">🔍</button>
-            <button class="btn-icon" title="Plus">⋮</button>
+          <button id="logoutBtn" class="btn-icon" title="Déconnexion">🚪</button>
+        </div>
+
+        <div class="search-container">
+          <input type="text" id="userSearch" placeholder="🔍 Rechercher un utilisateur...">
+          <div id="searchResults" class="search-results"></div>
+        </div>
+
+        <div class="conversations-list" id="conversationsList">
+          <p class="empty-state">Aucune conversation</p>
+        </div>
+      </aside>
+
+      <!-- ══ PANNEAU 2 : CHAT ═════════════════════════ -->
+      <main class="chat-main" id="chatMain">
+
+        <!-- État vide (desktop) -->
+        <div class="empty-chat" id="emptyChat">
+          <div class="empty-chat-content">
+            <span class="empty-chat-icon">💬</span>
+            <h2>Bienvenue sur InstantChat</h2>
+            <p>Sélectionnez une conversation ou recherchez un utilisateur</p>
           </div>
         </div>
 
-        <!-- Messages -->
-        <div class="messages-container" id="messagesContainer">
-          <div class="messages-loading">Chargement des messages...</div>
-        </div>
+        <!-- Chat actif -->
+        <div class="chat-active" id="chatActive" style="display:none;">
 
-        <!-- Zone de saisie -->
-        <div class="chat-input-container">
-          <div id="replyPreview" class="reply-preview" style="display: none;">
-            <div class="reply-content">
-              <p class="reply-to">Répondre à <strong></strong></p>
-              <p class="reply-message"></p>
+          <div class="chat-header">
+            <!-- Bouton retour visible uniquement sur mobile (via CSS) -->
+            <button class="btn-back btn-icon" id="backBtn" title="Retour">←</button>
+
+            <div class="chat-user-info">
+              <img id="chatUserAvatar" src="/images/default-avatar.png" alt="Avatar">
+              <div>
+                <h3 id="chatUserName">Utilisateur</h3>
+                <p id="chatUserStatus" class="status-text">Hors ligne</p>
+                <p id="typingIndicator" class="typing-indicator" style="display:none;">✍️ En train d'écrire...</p>
+              </div>
             </div>
-            <button class="btn-icon" id="cancelReply">✕</button>
+
+            <div class="chat-actions">
+              <button class="btn-icon chat-action-btn" title="Options">⋮</button>
+            </div>
           </div>
 
-          <div class="chat-input">
-            <button class="btn-icon" id="emojiBtn" title="Emoji">😊</button>
-            <input type="file" id="fileInput" accept="image/*,video/*,audio/*,.pdf,.doc,.docx" hidden>
-            <button class="btn-icon" id="attachBtn" title="Joindre un fichier">📎</button>
-            
-            <input type="text" id="messageInput" placeholder="Écrivez un message..." autocomplete="off">
-            
-            <button class="btn-icon" id="audioBtn" title="Message vocal">🎤</button>
-            <button class="btn-send" id="sendBtn">
-              <span>➤</span>
-            </button>
+          <div class="messages-container" id="messagesContainer">
+            <div class="messages-loading">Sélectionnez une conversation</div>
           </div>
 
-          <div id="filePreview" class="file-preview" style="display: none;"></div>
+          <div class="chat-input-container">
+            <div id="replyPreview" class="reply-preview" style="display:none;">
+              <div class="reply-content">
+                <p class="reply-to">Répondre à <strong id="replyToName"></strong></p>
+                <p class="reply-message" id="replyToContent"></p>
+              </div>
+              <button class="btn-icon" id="cancelReply">✕</button>
+            </div>
+
+            <div class="chat-input">
+              <input type="file" id="fileInput"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+                hidden>
+              <button class="btn-icon attach-icon" id="attachBtn" title="Joindre un fichier">📎</button>
+              <input type="text" id="messageInput" placeholder="Écrivez un message..." autocomplete="off">
+              <button class="btn-icon audio-icon" id="audioBtn" title="Message vocal">🎤</button>
+              <button class="btn-send" id="sendBtn" title="Envoyer">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                  <path d="M1.101 21.757L23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Limite fichier et aperçu -->
+            <div id="fileSizeHint" class="file-size-hint" style="display:none;"></div>
+            <div id="filePreview" class="file-preview" style="display:none;"></div>
+          </div>
         </div>
-      </div>
-    </main>
-  </div>
+      </main>
 
-  <!-- Modal pour l'aperçu des médias -->
-  <div id="mediaModal" class="modal" style="display: none;">
+    </div><!-- /.chat-container -->
+  </div><!-- /.chat-wrapper -->
+
+  <!-- Modal média -->
+  <div id="mediaModal" class="modal" style="display:none;">
     <div class="modal-content">
       <span class="modal-close">&times;</span>
       <div id="mediaModalContent"></div>

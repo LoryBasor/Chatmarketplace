@@ -40,8 +40,8 @@ const auth = async (req, res, next) => {
       throw error;
     }
     
-    // Vérifier que l'utilisateur existe toujours
-    const user = await User.findById(decoded.userId).select('-password');
+    // Vérifier que l'utilisateur existe toujours en MySQL
+    const user = await User.findById(decoded.userId);
     
     if (!user) {
       return res.status(HTTP_STATUS.UNAUTHORIZED).json({ 
@@ -50,7 +50,7 @@ const auth = async (req, res, next) => {
     }
     
     // Ajouter l'userId et user à la requête
-    req.userId = decoded.userId;
+    req.userId = user.id;
     req.user = user;
     
     next();
@@ -64,7 +64,6 @@ const auth = async (req, res, next) => {
 
 /**
  * Middleware optionnel - n'échoue pas si pas de token
- * Utile pour les routes accessibles avec ou sans authentification
  */
 const optionalAuth = async (req, res, next) => {
   try {
@@ -78,10 +77,10 @@ const optionalAuth = async (req, res, next) => {
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.userId).select('-password');
+      const user = await User.findById(decoded.userId);
       
       if (user) {
-        req.userId = decoded.userId;
+        req.userId = user.id;
         req.user = user;
       }
     } catch (error) {

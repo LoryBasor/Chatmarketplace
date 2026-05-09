@@ -2,15 +2,32 @@
 // Constantes globales de l'application
 
 module.exports = {
-  // Limites de fichiers
-  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB
+  // ── Limites globales ────────────────────────────────────────
+  MAX_FILE_SIZE:      parseInt(process.env.MAX_FILE_SIZE) || 50 * 1024 * 1024, // 50MB max absolu
   MAX_MESSAGE_LENGTH: 5000,
-  MAX_STATUS_LENGTH: 150,
-  MAX_NAME_LENGTH: 100,
-  
-  // Rétention des fichiers
-  FILE_RETENTION_DAYS: parseInt(process.env.FILE_RETENTION_DAYS) || 30,
-  
+  MAX_STATUS_LENGTH:  150,
+  MAX_NAME_LENGTH:    100,
+
+  // ── Limites PAR TYPE de fichier ─────────────────────────────
+  FILE_SIZE_LIMITS: {
+    image:    1  * 1024 * 1024,  // 5 MB
+    video:    5 * 1024 * 1024,  // 50 MB
+    audio:    1 * 1024 * 1024,  // 10 MB
+    document: 5 * 1024 * 1024   // 20 MB
+  },
+
+  // ── Durée de rétention des médias (jours) ───────────────────
+  // 0 = illimité, valeur positive = expiration automatique
+  MEDIA_RETENTION_DAYS: {
+    image:    parseInt(process.env.IMAGE_RETENTION_DAYS)    || 90,   // 3 mois
+    video:    parseInt(process.env.VIDEO_RETENTION_DAYS)    || 30,   // 1 mois
+    audio:    parseInt(process.env.AUDIO_RETENTION_DAYS)    || 60,   // 2 mois
+    document: parseInt(process.env.DOCUMENT_RETENTION_DAYS) || 180   // 6 mois
+  },
+
+  // Rétention globale (fallback)
+  FILE_RETENTION_DAYS: parseInt(process.env.FILE_RETENTION_DAYS) || 90,
+
   // Types de fichiers autorisés
   ALLOWED_IMAGE_TYPES: [
     'image/jpeg',

@@ -17,7 +17,7 @@ exports.register = async (req, res, next) => {
     const { email, password, name } = req.body;
 
     // Vérifier si l'utilisateur existe déjà
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser) {
       return res.status(400).json({ error: 'Cet email est déjà utilisé' });
     }
@@ -26,7 +26,7 @@ exports.register = async (req, res, next) => {
     const user = await User.create({ email, password, name });
 
     // Générer le token
-    const token = generateToken(user._id);
+    const token = generateToken(user.id);
 
     res.status(201).json({
       message: 'Inscription réussie',
@@ -44,7 +44,7 @@ exports.login = async (req, res, next) => {
     const { email, password } = req.body;
 
     // Trouver l'utilisateur
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
@@ -56,7 +56,7 @@ exports.login = async (req, res, next) => {
     }
 
     // Générer le token
-    const token = generateToken(user._id);
+    const token = generateToken(user.id);
 
     res.json({
       message: 'Connexion réussie',

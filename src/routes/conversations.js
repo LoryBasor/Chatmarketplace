@@ -11,4 +11,4 @@ router.get('/', conversationController.getConversations);
 router.get('/:id', conversationController.getConversationById);
 router.put('/:id/read', conversationController.markAsRead);
 
-module.exports = router;
+module.exports = router; 

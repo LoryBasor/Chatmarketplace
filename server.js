@@ -145,7 +145,7 @@ server.listen(PORT, () => {
 ╠════════════════════════════════════════╣
 ║  Port: ${PORT}                        
 ║  Environment: ${process.env.NODE_ENV || 'development'}
-║  MongoDB: Connected                    ║
+║  MySQL: Connected                      ║
 ║  Socket.IO: Initialized                ║
 ╚════════════════════════════════════════╝
   `);

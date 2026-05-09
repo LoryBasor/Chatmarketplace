@@ -6,29 +6,27 @@ const Conversation = require('../models/Conversation');
 exports.getUsers = async (req, res, next) => {
   try {
     const { search, limit = 20, page = 1 } = req.query;
-    const query = { _id: { $ne: req.userId } };
+    const parsedLimit = parseInt(limit);
+    const parsedPage  = parseInt(page);
+    const skip = (parsedPage - 1) * parsedLimit;
 
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
-      ];
-    }
+    const criteria = { _id_ne: req.userId };
+    if (search) criteria.search = search;
 
-    const users = await User.find(query)
-      .select('-password')
-      .limit(parseInt(limit))
-      .skip((parseInt(page) - 1) * parseInt(limit))
-      .sort({ name: 1 });
+    const users = await User.find(criteria, {
+      limit: parsedLimit,
+      skip,
+      sort: 'name ASC'
+    });
 
-    const total = await User.countDocuments(query);
+    const total = await User.countDocuments(criteria);
 
     res.json({
       users: users.map(u => u.toPublicJSON()),
       pagination: {
         total,
-        page: parseInt(page),
-        pages: Math.ceil(total / parseInt(limit))
+        page: parsedPage,
+        pages: Math.ceil(total / parsedLimit)
       }
     });
   } catch (error) {
@@ -39,7 +37,7 @@ exports.getUsers = async (req, res, next) => {
 // Obtenir un utilisateur spécifique
 exports.getUserById = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
+    const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
@@ -56,15 +54,11 @@ exports.updateProfile = async (req, res, next) => {
     const { name, status, settings } = req.body;
     const updates = {};
 
-    if (name) updates.name = name;
-    if (status) updates.status = status;
+    if (name)     updates.name = name;
+    if (status)   updates.status = status;
     if (settings) updates.settings = settings;
 
-    const user = await User.findByIdAndUpdate(
-      req.userId,
-      updates,
-      { new: true, runValidators: true }
-    ).select('-password');
+    const user = await User.findByIdAndUpdate(req.userId, updates);
 
     res.json({ user: user.toPublicJSON() });
   } catch (error) {
@@ -78,17 +72,17 @@ exports.toggleBlockUser = async (req, res, next) => {
     const { userId } = req.params;
     const currentUser = await User.findById(req.userId);
 
-    const isBlocked = currentUser.blockedUsers.includes(userId);
+    const blockedUsers = currentUser.blockedUsers || [];
+    const isBlocked = blockedUsers.some(id => String(id) === String(userId));
 
+    let updatedList;
     if (isBlocked) {
-      currentUser.blockedUsers = currentUser.blockedUsers.filter(
-        id => id.toString() !== userId
-      );
+      updatedList = blockedUsers.filter(id => String(id) !== String(userId));
     } else {
-      currentUser.blockedUsers.push(userId);
+      updatedList = [...blockedUsers, parseInt(userId)];
     }
 
-    await currentUser.save();
+    await User.findByIdAndUpdate(req.userId, { blockedUsers: updatedList });
 
     res.json({
       message: isBlocked ? 'Utilisateur débloqué' : 'Utilisateur bloqué',

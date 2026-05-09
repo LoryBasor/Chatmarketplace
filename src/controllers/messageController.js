@@ -1,52 +1,40 @@
 // src/controllers/messageController.js
-const Message = require('../models/Message');
+const Message      = require('../models/Message');
 const Conversation = require('../models/Conversation');
-const { getIO } = require('../config/socket');
+const { getIO }    = require('../config/socket');
 
-// Créer un message
+// Créer un message texte
 exports.createMessage = async (req, res, next) => {
   try {
     const { conversationId, content, type = 'text', replyTo } = req.body;
 
-    // Vérifier que l'utilisateur fait partie de la conversation
-    const conversation = await Conversation.findOne({
-      _id: conversationId,
-      participants: req.userId
-    });
+    const convId = parseInt(conversationId);
+    if (!convId) return res.status(400).json({ error: 'conversationId invalide' });
 
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation non trouvée' });
-    }
+    const conversation = await Conversation.findOne({ id: convId, participant: req.userId });
+    if (!conversation) return res.status(404).json({ error: 'Conversation non trouvée' });
 
-    // Créer le message
     const message = await Message.create({
-      conversation: conversationId,
-      sender: req.userId,
+      conversation: convId,
+      sender:       req.userId,
       content,
       type,
-      replyTo
+      replyTo: replyTo ? parseInt(replyTo) : null
     });
 
-    // Populer les informations
-    await message.populate('sender', '-password');
-    if (replyTo) await message.populate('replyTo');
-
     // Mettre à jour la conversation
-    conversation.lastMessage = message._id;
-    conversation.lastMessageAt = message.createdAt;
+    await Conversation.updateLastMessage(convId, message.id, message.createdAt);
 
-    // Incrémenter le compteur de non lus pour les autres participants
-    for (const participantId of conversation.participants) {
-      if (participantId.toString() !== req.userId.toString()) {
-        await conversation.incrementUnread(participantId);
+    // Incrémenter non-lus
+    for (const participant of conversation.participants) {
+      if (String(participant.id) !== String(req.userId)) {
+        await Conversation.incrementUnread(convId, participant.id);
       }
     }
 
-    await conversation.save();
-
     // Émettre via Socket.IO
     const io = getIO();
-    io.to(`conversation:${conversationId}`).emit('message:new', message);
+    io.to(`conversation:${convId}`).emit('message:new', message);
 
     res.status(201).json({ message });
   } catch (error) {
@@ -57,35 +45,19 @@ exports.createMessage = async (req, res, next) => {
 // Récupérer les messages d'une conversation
 exports.getMessages = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const convId = parseInt(req.params.id);
     const { limit = 50, before } = req.query;
 
-    // Vérifier l'accès à la conversation
-    const conversation = await Conversation.findOne({
-      _id: id,
-      participants: req.userId
+    const conversation = await Conversation.findOne({ id: convId, participant: req.userId });
+    if (!conversation) return res.status(404).json({ error: 'Conversation non trouvée' });
+
+    const messages = await Message.findByConversation(convId, {
+      limit:  parseInt(limit),
+      before: before || null,
+      userId: req.userId
     });
 
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation non trouvée' });
-    }
-
-    const query = {
-      conversation: id,
-      deletedFor: { $ne: req.userId }
-    };
-
-    if (before) {
-      query.createdAt = { $lt: new Date(before) };
-    }
-
-    const messages = await Message.find(query)
-      .populate('sender', '-password')
-      .populate('replyTo')
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
-
-    res.json({ messages: messages.reverse() });
+    res.json({ messages });
   } catch (error) {
     next(error);
   }
@@ -94,23 +66,18 @@ exports.getMessages = async (req, res, next) => {
 // Éditer un message
 exports.editMessage = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const msgId   = parseInt(req.params.id);
     const { content } = req.body;
 
-    const message = await Message.findOne({ _id: id, sender: req.userId });
+    const message = await Message.findOne({ id: msgId, sender_id: req.userId });
+    if (!message) return res.status(404).json({ error: 'Message non trouvé' });
 
-    if (!message) {
-      return res.status(404).json({ error: 'Message non trouvé' });
-    }
+    const updated = await message.edit(content);
 
-    await message.edit(content);
-    await message.populate('sender', '-password');
-
-    // Émettre via Socket.IO
     const io = getIO();
-    io.to(`conversation:${message.conversation}`).emit('message:edited', message);
+    io.to(`conversation:${updated.conversation}`).emit('message:edited', updated);
 
-    res.json({ message });
+    res.json({ message: updated });
   } catch (error) {
     next(error);
   }
@@ -119,26 +86,22 @@ exports.editMessage = async (req, res, next) => {
 // Supprimer un message
 exports.deleteMessage = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const msgId = parseInt(req.params.id);
     const { forEveryone = false } = req.body;
 
-    const message = await Message.findById(id);
+    const message = await Message.findById(msgId);
+    if (!message) return res.status(404).json({ error: 'Message non trouvé' });
 
-    if (!message) {
-      return res.status(404).json({ error: 'Message non trouvé' });
-    }
-
-    // Vérifier les permissions
-    if (forEveryone && message.sender.toString() !== req.userId.toString()) {
+    const senderId = message.sender ? message.sender.id : message.senderId;
+    if (forEveryone && String(senderId) !== String(req.userId)) {
       return res.status(403).json({ error: 'Non autorisé' });
     }
 
     await message.softDelete(req.userId, forEveryone);
 
-    // Émettre via Socket.IO
     const io = getIO();
     io.to(`conversation:${message.conversation}`).emit('message:deleted', {
-      messageId: id,
+      messageId: msgId,
       forEveryone
     });
 

@@ -151,7 +151,7 @@ exports.slugify = (text) => {
  * Pagination helper
  * @param {number} page - Numéro de page
  * @param {number} limit - Nombre d'éléments par page
- * @returns {object} Skip et limit pour MongoDB
+ * @returns {object} Skip et limit pour SQL
  */
 exports.getPagination = (page = 1, limit = 50) => {
   const validPage = Math.max(1, parseInt(page));
@@ -250,14 +250,17 @@ exports.getFileExtension = (filename) => {
 };
 
 /**
- * Valider un ObjectId MongoDB
- * @param {string} id - ID à valider
+ * Valider un ID MySQL (entier positif)
+ * @param {string|number} id - ID à valider
  * @returns {boolean} Valide ou non
  */
-exports.isValidObjectId = (id) => {
-  const objectIdPattern = /^[0-9a-fA-F]{24}$/;
-  return objectIdPattern.test(id);
+exports.isValidId = (id) => {
+  const n = parseInt(id);
+  return Number.isInteger(n) && n > 0;
 };
+
+// Alias pour la compatibilité
+exports.isValidObjectId = exports.isValidId;
 
 /**
  * Convertir une durée en secondes vers un format lisible

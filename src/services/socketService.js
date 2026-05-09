@@ -1,155 +1,130 @@
 // src/services/socketService.js
 const Conversation = require('../models/Conversation');
-const Message = require('../models/Message');
-const { getIO } = require('../config/socket');
+const Message      = require('../models/Message');
+
+// Lazy-require pour briser la dépendance circulaire socket.js <-> socketService.js
+const getIO = () => require('../config/socket').getIO();
+
+// Helper : comparer deux IDs (Number ou String)
+const sameId = (a, b) => String(a) === String(b);
 
 // Rejoindre les rooms des conversations de l'utilisateur
 exports.joinUserRooms = async (socket) => {
   try {
-    const conversations = await Conversation.find({
-      participants: socket.userId
-    });
-
+    const conversations = await Conversation.findByUser(socket.userId);
     conversations.forEach(conv => {
-      socket.join(`conversation:${conv._id}`);
+      socket.join(`conversation:${conv.id}`);
     });
-
     console.log(`User ${socket.userId} joined ${conversations.length} rooms`);
   } catch (error) {
     console.error('Error joining rooms:', error);
   }
 };
 
-// Gérer l'envoi de message via Socket
+// Envoyer un message via Socket
 exports.handleSendMessage = async (socket, data) => {
   try {
     const { conversationId, content, type = 'text', replyTo } = data;
+    const convId = parseInt(conversationId);
 
-    // Vérifier l'accès à la conversation
-    const conversation = await Conversation.findOne({
-      _id: conversationId,
-      participants: socket.userId
-    });
-
+    const conversation = await Conversation.findOne({ id: convId, participant: socket.userId });
     if (!conversation) {
       return socket.emit('error', { message: 'Conversation non trouvée' });
     }
 
-    // Créer le message
     const message = await Message.create({
-      conversation: conversationId,
-      sender: socket.userId,
+      conversation: convId,
+      sender:       socket.userId,
       content,
       type,
-      replyTo
+      replyTo: replyTo ? parseInt(replyTo) : null
     });
 
-    await message.populate('sender', '-password');
-    if (replyTo) await message.populate('replyTo');
-
     // Mettre à jour la conversation
-    conversation.lastMessage = message._id;
-    conversation.lastMessageAt = message.createdAt;
+    await Conversation.updateLastMessage(convId, message.id, message.createdAt);
 
-    // Incrémenter les non lus
-    for (const participantId of conversation.participants) {
-      if (participantId.toString() !== socket.userId.toString()) {
-        await conversation.incrementUnread(participantId);
+    // Incrémenter non-lus pour les autres
+    for (const participant of conversation.participants) {
+      if (!sameId(participant.id, socket.userId)) {
+        await Conversation.incrementUnread(convId, participant.id);
       }
     }
 
-    await conversation.save();
-
-    // Émettre le message à tous dans la conversation
+    // Émettre à toute la room
     const io = getIO();
-    io.to(`conversation:${conversationId}`).emit('message:new', message);
+    io.to(`conversation:${convId}`).emit('message:new', message);
 
-    // Envoyer confirmation à l'émetteur
+    // Confirmation à l'émetteur
     socket.emit('message:sent', { tempId: data.tempId, message });
 
   } catch (error) {
     console.error('Error sending message:', error);
-    socket.emit('error', { message: 'Erreur lors de l\'envoi du message' });
+    socket.emit('error', { message: "Erreur lors de l'envoi du message" });
   }
 };
 
-// Marquer un message comme livré
+// Marquer comme livré
 exports.handleMessageDelivered = async (socket, data) => {
   try {
     const { messageId } = data;
+    const msgId = parseInt(messageId);
 
-    const message = await Message.findById(messageId);
+    const message = await Message.findById(msgId);
     if (!message) return;
 
-    await message.markAsDelivered(socket.userId);
+    await Message.markAsDelivered(msgId, socket.userId);
 
     const io = getIO();
     io.to(`conversation:${message.conversation}`).emit('message:delivered', {
-      messageId,
+      messageId: msgId,
       userId: socket.userId,
       deliveredAt: new Date()
     });
-
   } catch (error) {
     console.error('Error marking as delivered:', error);
   }
 };
 
-// Marquer un message comme lu
+// Marquer comme lu
 exports.handleMessageRead = async (socket, data) => {
   try {
     const { messageId, conversationId } = data;
 
     if (messageId) {
-      // Marquer un message spécifique
-      const message = await Message.findById(messageId);
+      const msgId = parseInt(messageId);
+      const message = await Message.findById(msgId);
       if (message) {
-        await message.markAsRead(socket.userId);
-        
+        await Message.markAsRead(msgId, socket.userId);
         const io = getIO();
         io.to(`conversation:${message.conversation}`).emit('message:read', {
-          messageId,
+          messageId: msgId,
           userId: socket.userId,
           readAt: new Date()
         });
       }
     } else if (conversationId) {
-      // Marquer tous les messages de la conversation
-      const conversation = await Conversation.findById(conversationId);
-      if (conversation) {
-        await conversation.resetUnread(socket.userId);
-
-        await Message.updateMany(
-          {
-            conversation: conversationId,
-            sender: { $ne: socket.userId },
-            'readBy.user': { $ne: socket.userId }
-          },
-          {
-            $push: { readBy: { user: socket.userId, readAt: new Date() } },
-            'status.read': true
-          }
-        );
-
-        const io = getIO();
-        io.to(`conversation:${conversationId}`).emit('messages:read', {
-          conversationId,
-          userId: socket.userId,
-          readAt: new Date()
-        });
-      }
+      const convId = parseInt(conversationId);
+      await Conversation.resetUnread(convId, socket.userId);
+      await Message.updateMany(
+        { conversation_id: convId, sender_id_ne: socket.userId },
+        { status_read: true, readBy: { userId: socket.userId } }
+      );
+      const io = getIO();
+      io.to(`conversation:${convId}`).emit('messages:read', {
+        conversationId: convId,
+        userId: socket.userId,
+        readAt: new Date()
+      });
     }
-
   } catch (error) {
     console.error('Error marking as read:', error);
   }
 };
 
-// Gérer l'indicateur "en train d'écrire"
+// Typing start
 exports.handleTypingStart = async (socket, data) => {
   try {
     const { conversationId } = data;
-    
     socket.to(`conversation:${conversationId}`).emit('typing:user', {
       userId: socket.userId,
       conversationId,
@@ -160,10 +135,10 @@ exports.handleTypingStart = async (socket, data) => {
   }
 };
 
+// Typing stop
 exports.handleTypingStop = async (socket, data) => {
   try {
     const { conversationId } = data;
-    
     socket.to(`conversation:${conversationId}`).emit('typing:user', {
       userId: socket.userId,
       conversationId,
@@ -178,25 +153,18 @@ exports.handleTypingStop = async (socket, data) => {
 exports.handleMessageEdit = async (socket, data) => {
   try {
     const { messageId, content } = data;
+    const msgId = parseInt(messageId);
 
-    const message = await Message.findOne({
-      _id: messageId,
-      sender: socket.userId
-    });
+    const message = await Message.findOne({ id: msgId, sender_id: socket.userId });
+    if (!message) return socket.emit('error', { message: 'Message non trouvé' });
 
-    if (!message) {
-      return socket.emit('error', { message: 'Message non trouvé' });
-    }
-
-    await message.edit(content);
-    await message.populate('sender', '-password');
+    const updated = await message.edit(content);
 
     const io = getIO();
-    io.to(`conversation:${message.conversation}`).emit('message:edited', message);
-
+    io.to(`conversation:${updated.conversation}`).emit('message:edited', updated);
   } catch (error) {
     console.error('Error editing message:', error);
-    socket.emit('error', { message: 'Erreur lors de l\'édition' });
+    socket.emit('error', { message: "Erreur lors de l'édition" });
   }
 };
 
@@ -204,14 +172,13 @@ exports.handleMessageEdit = async (socket, data) => {
 exports.handleMessageDelete = async (socket, data) => {
   try {
     const { messageId, forEveryone = false } = data;
+    const msgId = parseInt(messageId);
 
-    const message = await Message.findById(messageId);
+    const message = await Message.findById(msgId);
+    if (!message) return socket.emit('error', { message: 'Message non trouvé' });
 
-    if (!message) {
-      return socket.emit('error', { message: 'Message non trouvé' });
-    }
-
-    if (forEveryone && message.sender.toString() !== socket.userId.toString()) {
+    const senderId = message.sender ? message.sender.id : message.senderId;
+    if (forEveryone && !sameId(senderId, socket.userId)) {
       return socket.emit('error', { message: 'Non autorisé' });
     }
 
@@ -219,11 +186,10 @@ exports.handleMessageDelete = async (socket, data) => {
 
     const io = getIO();
     io.to(`conversation:${message.conversation}`).emit('message:deleted', {
-      messageId,
+      messageId: msgId,
       forEveryone,
       deletedBy: socket.userId
     });
-
   } catch (error) {
     console.error('Error deleting message:', error);
     socket.emit('error', { message: 'Erreur lors de la suppression' });
@@ -235,7 +201,6 @@ exports.handleConversationJoin = async (socket, data) => {
   try {
     const { conversationId } = data;
     socket.join(`conversation:${conversationId}`);
-    console.log(`User ${socket.userId} joined conversation ${conversationId}`);
   } catch (error) {
     console.error('Error joining conversation:', error);
   }
@@ -246,7 +211,6 @@ exports.handleConversationLeave = async (socket, data) => {
   try {
     const { conversationId } = data;
     socket.leave(`conversation:${conversationId}`);
-    console.log(`User ${socket.userId} left conversation ${conversationId}`);
   } catch (error) {
     console.error('Error leaving conversation:', error);
   }

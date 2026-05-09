@@ -1,8 +1,10 @@
-// public/js/socket.js - Client Socket.IO
+// public/js/socket.js — Client Socket.IO (corrigé)
 
 let socket = null;
 
-// Initialiser Socket.IO
+// Helper comparaison d'IDs (Number ou String)
+const sameId = (a, b) => String(a) === String(b);
+
 function initSocket() {
   const token = localStorage.getItem('token');
   if (!token) return;
@@ -12,93 +14,92 @@ function initSocket() {
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
-    reconnectionAttempts: 5
+    reconnectionAttempts: 10
   });
 
-  // Connexion établie
+  // ─── Connexion ───────────────────────────────────
   socket.on('connect', () => {
     console.log('✅ Socket.IO connecté:', socket.id);
   });
 
-  // Erreur de connexion
   socket.on('connect_error', (error) => {
     console.error('❌ Erreur Socket.IO:', error.message);
-    
-    if (error.message.includes('Authentication')) {
-      // Token invalide, rediriger vers la connexion
+    if (error.message && error.message.includes('Authentication')) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/';
     }
   });
 
-  // Déconnexion
   socket.on('disconnect', (reason) => {
     console.log('Socket.IO déconnecté:', reason);
   });
 
-  // Reconnexion
-  socket.on('reconnect', (attemptNumber) => {
-    console.log('Socket.IO reconnecté après', attemptNumber, 'tentatives');
+  socket.on('reconnect', (n) => {
+    console.log('Socket.IO reconnecté après', n, 'tentatives');
+    // Recharger les conversations après reconnexion
+    if (typeof loadConversations === 'function') loadConversations();
   });
 
-  // === ÉVÉNEMENTS DE MESSAGES ===
+  // ─── MESSAGES ────────────────────────────────────
 
-  // Nouveau message reçu
+  // Nouveau message
   socket.on('message:new', (message) => {
     console.log('📨 Nouveau message:', message);
     handleNewMessage(message);
   });
 
-  // Message envoyé avec succès
+  // Confirmation d'envoi (remplace le message temporaire)
   socket.on('message:sent', ({ tempId, message }) => {
-    console.log('✅ Message envoyé:', message);
-    
-    // Remplacer le message temporaire par le vrai
-    const index = messages.findIndex(m => m._id === tempId);
+    const index = messages.findIndex(m => m.id === tempId || m._id === tempId);
     if (index !== -1) {
       messages[index] = message;
-      displayMessages();
+    } else {
+      // Si pas trouvé (double event), éviter les doublons
+      const exists = messages.find(m => sameId(m.id, message.id));
+      if (!exists) messages.push(message);
     }
+    displayMessages();
+    scrollToBottom();
   });
 
   // Message livré
   socket.on('message:delivered', ({ messageId, userId, deliveredAt }) => {
-    const msg = messages.find(m => m._id === messageId);
+    const msg = messages.find(m => sameId(m.id, messageId));
     if (msg) {
+      msg.status = msg.status || {};
       msg.status.delivered = true;
-      if (!msg.deliveredTo) msg.deliveredTo = [];
-      msg.deliveredTo.push({ user: userId, deliveredAt });
-      displayMessages();
+      updateMessageStatus(msg.id);
     }
   });
 
-  // Message lu
+  // Message lu (un seul)
   socket.on('message:read', ({ messageId, userId, readAt }) => {
-    const msg = messages.find(m => m._id === messageId);
+    const msg = messages.find(m => sameId(m.id, messageId));
     if (msg) {
+      msg.status = msg.status || {};
       msg.status.read = true;
-      if (!msg.readBy) msg.readBy = [];
-      msg.readBy.push({ user: userId, readAt });
-      displayMessages();
+      updateMessageStatus(msg.id);
     }
   });
 
   // Tous les messages d'une conversation lus
   socket.on('messages:read', ({ conversationId, userId, readAt }) => {
-    if (currentConversation && currentConversation._id === conversationId) {
-      messages.forEach(msg => {
-        if (msg.sender.id === currentUser.id) {
-          msg.status.read = true;
-        }
-      });
-      displayMessages();
-    }
+    if (!currentConversation || !sameId(currentConversation.id, conversationId)) return;
+    // Marquer tous les messages envoyés par moi comme lus
+    messages.forEach(msg => {
+      const senderId = msg.sender ? msg.sender.id : msg.senderId;
+      if (sameId(senderId, currentUser.id)) {
+        msg.status = msg.status || {};
+        msg.status.read = true;
+      }
+    });
+    displayMessages();
   });
 
   // Message édité
   socket.on('message:edited', (editedMessage) => {
-    const index = messages.findIndex(m => m._id === editedMessage._id);
+    const index = messages.findIndex(m => sameId(m.id, editedMessage.id));
     if (index !== -1) {
       messages[index] = editedMessage;
       displayMessages();
@@ -108,153 +109,145 @@ function initSocket() {
   // Message supprimé
   socket.on('message:deleted', ({ messageId, forEveryone }) => {
     if (forEveryone) {
-      messages = messages.filter(m => m._id !== messageId);
+      messages = messages.filter(m => !sameId(m.id, messageId));
     } else {
-      const msg = messages.find(m => m._id === messageId);
-      if (msg) {
-        msg.isDeleted = true;
-      }
+      const msg = messages.find(m => sameId(m.id, messageId));
+      if (msg) msg.isDeleted = true;
     }
     displayMessages();
   });
 
-  // === ÉVÉNEMENTS DE STATUT UTILISATEUR ===
+  // ─── STATUT UTILISATEURS ─────────────────────────
 
-  // Utilisateur en ligne
-  socket.on('user:online', ({ userId, timestamp }) => {
-    console.log('👤 Utilisateur en ligne:', userId);
-    
-    // Mettre à jour le statut dans la conversation actuelle
+  socket.on('user:online', ({ userId }) => {
     if (currentConversation) {
-      const otherUser = currentConversation.participants.find(p => p.id === userId);
-      if (otherUser) {
-        otherUser.isOnline = true;
-        updateUserStatus(otherUser);
-      }
+      const u = currentConversation.participants
+        ? currentConversation.participants.find(p => sameId(p.id, userId))
+        : null;
+      if (u) { u.isOnline = true; updateUserStatus(u); }
     }
-
-    // Mettre à jour dans la liste des conversations
     conversations.forEach(conv => {
-      const user = conv.participants.find(p => p.id === userId);
-      if (user) user.isOnline = true;
+      if (conv.participants) {
+        const u = conv.participants.find(p => sameId(p.id, userId));
+        if (u) u.isOnline = true;
+      }
     });
   });
 
-  // Utilisateur hors ligne
   socket.on('user:offline', ({ userId, lastSeen }) => {
-    console.log('👤 Utilisateur hors ligne:', userId);
-    
     if (currentConversation) {
-      const otherUser = currentConversation.participants.find(p => p.id === userId);
-      if (otherUser) {
-        otherUser.isOnline = false;
-        otherUser.lastSeen = lastSeen;
-        updateUserStatus(otherUser);
-      }
+      const u = currentConversation.participants
+        ? currentConversation.participants.find(p => sameId(p.id, userId))
+        : null;
+      if (u) { u.isOnline = false; u.lastSeen = lastSeen; updateUserStatus(u); }
     }
-
     conversations.forEach(conv => {
-      const user = conv.participants.find(p => p.id === userId);
-      if (user) {
-        user.isOnline = false;
-        user.lastSeen = lastSeen;
+      if (conv.participants) {
+        const u = conv.participants.find(p => sameId(p.id, userId));
+        if (u) { u.isOnline = false; u.lastSeen = lastSeen; }
       }
     });
   });
 
-  // === ÉVÉNEMENTS DE SAISIE ===
+  // ─── TYPING ──────────────────────────────────────
 
-  // Utilisateur en train d'écrire
   socket.on('typing:user', ({ userId, conversationId, isTyping }) => {
-    if (currentConversation && currentConversation._id === conversationId) {
-      const indicator = document.getElementById('typingIndicator');
-      
-      if (isTyping && userId !== currentUser.id) {
-        indicator.style.display = 'block';
-      } else {
-        indicator.style.display = 'none';
-      }
+    if (!currentConversation || !sameId(currentConversation.id, conversationId)) return;
+    if (sameId(userId, currentUser.id)) return; // ignorer le propre typing
+
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) {
+      indicator.style.display = isTyping ? 'block' : 'none';
     }
   });
 
-  // === GESTION DES ERREURS ===
+  // ─── ERREURS ─────────────────────────────────────
 
   socket.on('error', ({ message }) => {
-    console.error('❌ Erreur Socket.IO:', message);
-    showNotification('Erreur', message, 'error');
+    console.error('❌ Socket error:', message);
+    if (typeof showToast === 'function') showToast(message, 'error');
   });
 
-  // Exposer le socket globalement
   window.socket = socket;
 }
 
-// Gérer un nouveau message
+// ─── Gestion d'un nouveau message ──────────────────
 function handleNewMessage(message) {
-  // Si c'est dans la conversation actuelle
-  if (currentConversation && message.conversation === currentConversation._id) {
-    messages.push(message);
-    displayMessages();
-    scrollToBottom();
+  const isCurrentConv = currentConversation &&
+    sameId(message.conversation || message.conversationId, currentConversation.id);
 
-    // Marquer automatiquement comme lu si la fenêtre est active
+  if (isCurrentConv) {
+    // Éviter les doublons (si déjà ajouté via message:sent)
+    const exists = messages.find(m => sameId(m.id, message.id));
+    if (!exists) {
+      messages.push(message);
+      displayMessages();
+      scrollToBottom();
+    }
+
+    // Marquer comme lu si la fenêtre est active
     if (document.hasFocus()) {
       socket.emit('message:read', {
-        messageId: message._id,
+        messageId: message.id,
         conversationId: message.conversation
       });
     }
 
     // Marquer comme livré
-    socket.emit('message:delivered', {
-      messageId: message._id
-    });
+    socket.emit('message:delivered', { messageId: message.id });
+
   } else {
-    // Afficher une notification
-    showNotification(
-      message.sender.name,
-      message.type === 'text' ? message.content : getMessagePreview(message),
-      'message',
-      () => {
-        // Ouvrir la conversation au clic
-        selectConversation(message.conversation);
-      }
-    );
-  }
+    // Notification pour les autres conversations
+    const senderName  = message.sender ? message.sender.name : 'Quelqu\'un';
+    const senderAvatar = message.sender ? message.sender.avatar : null;
+    const preview     = message.type === 'text'
+      ? (message.content || '').substring(0, 60)
+      : getMessagePreview(message);
 
-  // Mettre à jour la liste des conversations
-  loadConversations();
-}
-
-// Afficher une notification
-function showNotification(title, body, type = 'info', onClick = null) {
-  // Vérifier si les notifications sont supportées
-  if (!('Notification' in window)) return;
-
-  // Demander la permission si nécessaire
-  if (Notification.permission === 'granted') {
-    const notification = new Notification(title, {
-      body,
-      icon: '/images/logo.png',
-      badge: '/images/badge.png',
-      tag: 'instantchat',
-      requireInteraction: false
-    });
-
-    if (onClick) {
-      notification.onclick = () => {
-        window.focus();
-        onClick();
-        notification.close();
-      };
+    if (window.notificationManager) {
+      window.notificationManager.showMessage(
+        senderName,
+        preview,
+        message.conversation,
+        senderAvatar
+      );
     }
 
-    setTimeout(() => notification.close(), 5000);
-  } else if (Notification.permission !== 'denied') {
-    Notification.requestPermission().then(permission => {
-      if (permission === 'granted') {
-        showNotification(title, body, type, onClick);
+    // Mettre à jour la badge dans la liste
+    const conv = conversations.find(c => sameId(c.id, message.conversation));
+    if (conv) {
+      if (typeof conv.unreadCount === 'object') {
+        conv.unreadCount[currentUser.id] = (conv.unreadCount[currentUser.id] || 0) + 1;
+      } else {
+        conv.unreadCount = (conv.unreadCount || 0) + 1;
       }
-    });
+      conv.lastMessage    = message;
+      conv.lastMessageAt  = message.createdAt;
+    } else {
+      // Nouvelle conversation — recharger
+      loadConversations();
+      return;
+    }
+
+    displayConversations();
+  }
+}
+
+// Mettre à jour le statut d'un message dans le DOM sans re-rendre tout
+function updateMessageStatus(messageId) {
+  const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
+  if (!msgEl) { displayMessages(); return; }
+  const msg = messages.find(m => sameId(m.id, messageId));
+  if (!msg) return;
+  const timeEl = msgEl.querySelector('.message-time');
+  if (timeEl) {
+    const statusEl = timeEl.querySelector('.message-status');
+    if (statusEl) statusEl.remove();
+    const newStatus = document.createElement('span');
+    if (msg.status && msg.status.read)      { newStatus.className = 'message-status read'; newStatus.textContent = '✓✓'; }
+    else if (msg.status && msg.status.delivered) { newStatus.className = 'message-status'; newStatus.textContent = '✓✓'; }
+    else                                    { newStatus.className = 'message-status'; newStatus.textContent = '✓'; }
+    timeEl.appendChild(newStatus);
   }
 }
 

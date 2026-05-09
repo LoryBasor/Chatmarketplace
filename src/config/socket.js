@@ -33,7 +33,7 @@ const initSocket = (server) => {
         return next(new Error('Authentication error: Utilisateur non trouvé'));
       }
 
-      socket.userId = user._id.toString();
+      socket.userId = String(user.id);
       socket.user = user;
       next();
     } catch (error) {
@@ -62,20 +62,20 @@ const initSocket = (server) => {
     });
 
     // Gestion des événements de messages
-    socket.on('message:send', (data) => socketService.handleSendMessage(socket, data));
-    socket.on('message:read', (data) => socketService.handleMessageRead(socket, data));
+    socket.on('message:send',      (data) => socketService.handleSendMessage(socket, data));
+    socket.on('message:read',      (data) => socketService.handleMessageRead(socket, data));
     socket.on('message:delivered', (data) => socketService.handleMessageDelivered(socket, data));
     
     // Gestion du typing
     socket.on('typing:start', (data) => socketService.handleTypingStart(socket, data));
-    socket.on('typing:stop', (data) => socketService.handleTypingStop(socket, data));
+    socket.on('typing:stop',  (data) => socketService.handleTypingStop(socket, data));
     
     // Édition et suppression
-    socket.on('message:edit', (data) => socketService.handleMessageEdit(socket, data));
+    socket.on('message:edit',   (data) => socketService.handleMessageEdit(socket, data));
     socket.on('message:delete', (data) => socketService.handleMessageDelete(socket, data));
 
     // Gestion des conversations
-    socket.on('conversation:join', (data) => socketService.handleConversationJoin(socket, data));
+    socket.on('conversation:join',  (data) => socketService.handleConversationJoin(socket, data));
     socket.on('conversation:leave', (data) => socketService.handleConversationLeave(socket, data));
 
     // Déconnexion
