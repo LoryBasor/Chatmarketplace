@@ -50,9 +50,8 @@ exports.handleSendMessage = async (socket, data) => {
       }
     }
 
-    // Émettre à toute la room
-    const io = getIO();
-    io.to(`conversation:${convId}`).emit('message:new', message);
+    // Émettre à toute la room SAUF l'émetteur
+    socket.to(`conversation:${convId}`).emit('message:new', message);
 
     // Confirmation à l'émetteur
     socket.emit('message:sent', { tempId: data.tempId, message });

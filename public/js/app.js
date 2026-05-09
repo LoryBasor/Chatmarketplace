@@ -296,9 +296,13 @@ async function silentSync() {
     const convRes = await fetch(`${API_URL}/conversations`, { headers: getHeaders() });
     if (convRes.ok) {
       const data = await convRes.json();
-      // Mettre à jour seulement si nécessaire ou laisser displayConversations gérer (avec le scroll préservé)
-      conversations = data.conversations || [];
-      displayConversations();
+      const newConversations = data.conversations || [];
+      
+      // On compare pour ne rafraichir le DOM que si nécessaire (évite le lag ou flash)
+      if (JSON.stringify(conversations) !== JSON.stringify(newConversations)) {
+        conversations = newConversations;
+        displayConversations();
+      }
     }
 
     // 2. Sync des messages si une conversation est active
@@ -308,12 +312,11 @@ async function silentSync() {
         const data = await msgRes.json();
         const newMessages = data.messages || [];
         
-        // Vérifier s'il y a eu des changements (nombre de messages ou dernier ID)
-        const hasChanges = messages.length !== newMessages.length || 
-          (messages.length > 0 && newMessages.length > 0 && 
-           messages[messages.length - 1].id !== newMessages[newMessages.length - 1].id);
+        // Comparer intelligemment les messages actuels et les nouveaux pour détecter tout changement (statuts, etc)
+        const currentMsgsStr = JSON.stringify(messages);
+        const newMsgsStr = JSON.stringify(newMessages);
 
-        if (hasChanges) {
+        if (currentMsgsStr !== newMsgsStr) {
           const container = document.getElementById('messagesContainer');
           // Vérifier si l'utilisateur est déjà tout en bas
           const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
